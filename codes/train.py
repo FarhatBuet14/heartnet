@@ -11,8 +11,8 @@ import os
 from collections import Counter
 import numpy as np
 np.random.seed(1)
-from tensorflow import set_random_seed
-set_random_seed(1)
+import tensorflow as tf
+tf.random.set_seed(1)
 from datetime import datetime
 import argparse
 from keras.callbacks import TensorBoard, Callback, ReduceLROnPlateau
@@ -172,7 +172,7 @@ if __name__ == '__main__':
         json_file.write(model_json)
 
     modelcheckpnt = ModelCheckpoint(filepath=checkpoint_name,
-                                    monitor='val_acc', save_best_only=False,
+                                    monitor='val_accuracy', save_best_only=False,
                                     save_weights_only=False,
                                     mode='max')
     tensbd = TensorBoard(log_dir=os.path.join(log_dir,log_name),
