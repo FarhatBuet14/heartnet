@@ -75,14 +75,14 @@ if __name__ == '__main__':
         print("Training for %d epochs" % (args.epochs))
         epochs = args.epochs
     else:
-        epochs = 200
+        epochs = 300
         print("Training for %d epochs" % (epochs))
 
     if args.batch_size:  # if batch_size is specified
         print("Training with %d samples per minibatch" % (args.batch_size))
         batch_size = args.batch_size
     else:
-        batch_size = 64
+        batch_size = 1000
         print("Training with %d minibatches" % (batch_size))
 
     if args.verbose is not None:
