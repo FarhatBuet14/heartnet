@@ -71,13 +71,14 @@ class log_metrics(Callback):
     Keras Callback for custom metric logging
     '''
 
-    def __init__(self, val_parts, val_subset=None, soft=False, verbose=0 ):
+    def __init__(self, val_parts, validation_data, val_subset=None, soft=False, verbose=0 ):
         super(log_metrics, self).__init__()
         self.val_parts = val_parts
         if val_subset is not None:
             self.val_subset = np.asarray(val_subset)
         self.soft = soft
         self.verbose = verbose
+        self.validation_data = validation_data
 
     def on_epoch_end(self, epoch, logs):
         eps = 1.1e-5
@@ -92,8 +93,8 @@ class log_metrics(Callback):
             #### Learning Rate for Adam ###
 
             lr = self.model.optimizer.lr
-            if self.model.optimizer.initial_decay > 0:
-                lr *= (1. / (1. + self.model.optimizer.decay * K.cast(self.model.optimizer.iterations,
+            if self.model.optimizer._initial_decay > 0:
+                lr = lr * (1. / (1. + self.model.optimizer.decay * K.cast(self.model.optimizer.iterations,
                                                                       K.dtype(self.model.optimizer.decay))))
             t = K.cast(self.model.optimizer.iterations, K.floatx()) + 1
             lr_t = lr * (

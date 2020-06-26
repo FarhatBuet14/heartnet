@@ -31,8 +31,8 @@ if __name__ == '__main__':
 
     ### Parser for arguments (HS, random_seed, load_path, epochs, batch_size)
     parser = argparse.ArgumentParser()
-    parser.add_argument("HS",
-                        help="input HS tensor")
+    # parser.add_argument("HS",
+    #                     help="input HS tensor")
     parser.add_argument("--seed", type=int,
                         help="Random seed for the random number generator (defaults to 1)")
     parser.add_argument("--loadmodel",
@@ -49,8 +49,9 @@ if __name__ == '__main__':
     parser.add_argument("--lr", type=float)
 
     args = parser.parse_args()
-    print("%s selected" % (args.HS))
-    HS = args.HS
+    HS = "fold_0" # args.HS
+    print("%s selected" % (HS))
+    
 
     if args.seed:  # if random seed is specified
         print("Random seed specified as %d" % (args.seed))
@@ -111,7 +112,7 @@ if __name__ == '__main__':
     log_dir = os.path.join('..','logs')
     if not os.path.exists(os.path.join(model_dir,log_name)):
         os.makedirs(os.path.join(model_dir,log_name))
-    checkpoint_name = os.path.join(model_dir,log_name,'weights.{epoch:04d}-{val_acc:.4f}.hdf5')
+    checkpoint_name = os.path.join(model_dir,log_name,'weights.{epoch:04d}-.hdf5') #{val_acc:.4f}
     results_path = os.path.join('..','logs','resultsLog.csv')
 
     ### Init Params
@@ -172,7 +173,7 @@ if __name__ == '__main__':
         json_file.write(model_json)
 
     modelcheckpnt = ModelCheckpoint(filepath=checkpoint_name,
-                                    monitor='val_accuracy', save_best_only=False,
+                                    monitor='val_acc', save_best_only=False,
                                     save_weights_only=False,
                                     mode='max')
     tensbd = TensorBoard(log_dir=os.path.join(log_dir,log_name),
@@ -193,19 +194,20 @@ if __name__ == '__main__':
                         batch_size=batch_size, shuffle=True,
                         seed=random_seed)
     try:
-        model.fit_generator(flow,
-                            steps_per_epoch= sum(np.asarray(train_subset) == 'a') // flow.chunk_size,
-                            use_multiprocessing=False,
-                            epochs=epochs,
-                            verbose=verbose,
-                            shuffle=True,
-                            callbacks=[modelcheckpnt,
-                                       log_metrics(val_parts, soft=params['softFusion'],
-                                                   verbose=verbose, val_subset=val_subset),
-                                       tensbd, csv_logger],
-                            validation_data=(x_val, y_val),
-                            initial_epoch=initial_epoch,
-                            )
+        model.fit(flow,
+                steps_per_epoch= sum(np.asarray(train_subset) == 'a') // flow.chunk_size,
+                use_multiprocessing=False,
+                epochs=epochs,
+                verbose=verbose,
+                shuffle=True,
+                callbacks=[modelcheckpnt,
+                            log_metrics(val_parts, validation_data=(x_val, y_val),
+                                        soft=params['softFusion'],
+                                        verbose=verbose, val_subset=val_subset),
+                            tensbd, csv_logger],
+                validation_data=(x_val, y_val),
+                initial_epoch=initial_epoch,
+                )
 
         sessionLog(results_path=results_path, log_dir=log_dir, log_name=log_name, batch_size=batch_size, verbose=verbose,
                    comment=comment, **params)
@@ -213,3 +215,5 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         sessionLog(results_path=results_path, log_dir=log_dir, log_name=log_name, batch_size=batch_size, verbose=verbose,
                    comment=comment, **params)
+
+    print("Finished..")
