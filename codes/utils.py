@@ -83,7 +83,7 @@ class log_metrics(Callback):
     def on_epoch_end(self, epoch, logs):
         eps = 1.1e-5
         if logs is not None:
-            true,pred,subset = predict_parts(self.model,self.validation_data[0],
+            pred,true,subset = predict_parts(self.model,self.validation_data[0],
                                                 self.validation_data[1],self.val_parts,
                                                 self.val_subset,self.verbose,self.soft)
 
