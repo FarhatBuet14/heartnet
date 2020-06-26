@@ -1,11 +1,4 @@
 from __future__ import print_function, division, absolute_import
-# import tensorflow as tf
-# from keras.backend.tensorflow_backend import set_session
-# config = tf.ConfigProto()
-# config.gpu_options.per_process_gpu_memory_fraction = 0.4
-# set_session(tf.Session(config=config))
-# from clr_callback import CyclicLR
-# import dill
 from AudioDataGenerator import BalancedAudioDataGenerator
 import os
 from collections import Counter
@@ -194,20 +187,20 @@ if __name__ == '__main__':
                         batch_size=batch_size, shuffle=True,
                         seed=random_seed)
     try:
-        model.fit(flow,
-                steps_per_epoch= sum(np.asarray(train_subset) == 'a') // flow.chunk_size,
-                use_multiprocessing=False,
-                epochs=epochs,
-                verbose=verbose,
-                shuffle=True,
-                callbacks=[modelcheckpnt,
-                            log_metrics(val_parts, validation_data=(x_val, y_val),
-                                        soft=params['softFusion'],
-                                        verbose=verbose, val_subset=val_subset),
-                            tensbd, csv_logger],
-                validation_data=(x_val, y_val),
-                initial_epoch=initial_epoch,
-                )
+        model.fit_generator(flow,
+                            steps_per_epoch= sum(np.asarray(train_subset) == 'a') // flow.chunk_size,
+                            use_multiprocessing=False,
+                            epochs=epochs,
+                            verbose=verbose,
+                            shuffle=True,
+                            callbacks=[modelcheckpnt,
+                                        log_metrics(val_parts, validation_data=(x_val, y_val),
+                                                    soft=params['softFusion'],
+                                                    verbose=verbose, val_subset=val_subset),
+                                        tensbd, csv_logger],
+                            validation_data=(x_val, y_val),
+                            initial_epoch=initial_epoch,
+                            )
 
         sessionLog(results_path=results_path, log_dir=log_dir, log_name=log_name, batch_size=batch_size, verbose=verbose,
                    comment=comment, **params)
