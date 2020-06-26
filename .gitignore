@@ -31,3 +31,4 @@ data/*
 models/*
 logs/*
 **/*.pyc
+*.json
