@@ -2,6 +2,7 @@ from keras.callbacks import Callback
 import os
 import pandas as pd
 import numpy as np
+import tensorflow as tf
 from keras import backend as K
 from sklearn.metrics import confusion_matrix,roc_auc_score,roc_curve
 import matplotlib.pyplot as plt
@@ -16,6 +17,9 @@ from scipy.interpolate import interp1d
 from scipy import signal
 import csv
 from collections import Counter
+from statsmodels.stats.contingency_tables import mcnemar
+from mlxtend.evaluate import mcnemar_table
+from scipy.interpolate import interp1d
 
 def sessionLog(results_path,log_dir,log_name,activation_function,kernel_size,maxnorm,
                 dropout_rate,dropout_rate_dense,l2_reg,l2_reg_dense,batch_size,lr,bn_momentum,
@@ -617,7 +621,7 @@ def plot_coeff(logs, branches=[1, 2, 3, 4], min_epoch=20, min_metric=.7,
                 FIR_coeff.append(np.asarray(model.layers[branch].get_weights())[0, :, 0, 0])
                 layer_name.append(model.layers[branch].name)
             else:  # for gammatone
-                FIR_coeff.append(K.get_session().run(model.layers[branch].impulse_gammatone()))
+                FIR_coeff.append(tf.compat.v1.keras.backend.get_session().run(model.layers[branch].impulse_gammatone()))
                 layer_name.append(model.layers[branch].name)
             try:
                 layer_type.append(model.layers[branch].FIR_type)
@@ -672,7 +676,7 @@ def plot_freq(logs, branches=[1, 2, 3, 4], phase=False, min_epoch=20, min_metric
                 FIR_coeff.append(np.asarray(model.layers[branch].get_weights())[0, :, 0, 0])
                 layer_name.append(model.layers[branch].name)
             else:  # for gammatone
-                FIR_coeff.append(K.get_session().run(model.layers[branch].impulse_gammatone()))
+                FIR_coeff.append(tf.compat.v1.keras.backend.get_session().run(model.layers[branch].impulse_gammatone()))
                 layer_name.append(model.layers[branch].name)
             try:
                 layer_type.append(model.layers[branch].FIR_type)
@@ -840,3 +844,265 @@ def cc2rec_labels(data, labels):
         cctr = np.ones(idx[-1]) * labels[i]
         gt.append(cctr)
     return np.asarray(np.hstack(gt))
+
+def plotRoc(y_true, y_pred,ax=None,label='',control=True):
+    
+    """
+    By providing an plt.subplot's "ax" instance you can plot multiple roc's on the same plot by 
+    calling this function multiple times with the same "ax"
+    If none then it will generate multiple plots
+    """
+    
+    from sklearn.metrics import roc_auc_score, roc_curve
+    lr_probs = y_pred
+    testy = y_true
+    ns_probs = [0 for _ in range(len(testy))]
+    # keep probabilities for the positive outcome only
+    #lr_probs = lr_probs[:, 1]
+    # calculate scores
+    ns_auc = roc_auc_score(testy, ns_probs)
+    lr_auc = roc_auc_score(testy, lr_probs)
+    # summarize scores
+    print('No Skill: ROC AUC=%.3f' % (ns_auc))
+    print('Logistic: ROC AUC=%.3f' % (lr_auc))
+    # calculate roc curves
+    ns_fpr, ns_tpr, _ = roc_curve(testy, ns_probs)
+    lr_fpr, lr_tpr, _ = roc_curve(testy, lr_probs)
+    # plot the roc curve for the model
+    if(ax is not None):
+        if control:
+            ax.plot(ns_fpr, ns_tpr, linestyle='--', label='No Skill')
+        ax.plot(lr_fpr, lr_tpr,  label=label)
+        # axis labels
+        ax.set_xlabel('False Positive Rate',fontdict={'size':16})
+        ax.set_ylabel('True Positive Rate',fontdict={'size':16})
+        # show the legend
+        ax.legend( prop={'size':15})
+    else:
+        plt.figure(figsize=(10,10))
+        plt.plot(ns_fpr, ns_tpr, linestyle='--', label='No Skill')
+        plt.plot(lr_fpr, lr_tpr, marker='.', label='Logistic ')
+        # axis labels
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        # show the legend
+        plt.legend()
+        # show the plot
+        plt.show()
+
+def McnemerStats(true,pred1,pred2,threshold = 0.05, lab1='model 1', lab2='model 2'):
+    """
+    true: true labels of the data. 
+    pred1: predicted values from model 1 ## generated from block 8
+    pred2: predicted values from model 2 ## generated from block 8
+    """
+    pred1 = 1*(np.asarray(pred1) > 0.5)
+    pred2 = 1*(np.asarray(pred2) > .5)
+    true = np.asarray(true)
+    print(pred1.shape, pred2.shape, true.shape)
+    mc_table = mcnemar_table(y_target=true, 
+                   y_model1=pred1, 
+                   y_model2=pred2)
+    if(np.min(mc_table)<25):
+        result = mcnemar(mc_table, exact=True)
+    else:
+        result = mcnemar(mc_table, exact=False, correction=True)
+    print('statistic=%.10f, p-value=%.10f' % (result.statistic, result.pvalue))
+    # interpret the p-value
+    alpha = threshold
+    if result.pvalue > alpha:
+        print('Same proportions of errors, models make similar error (fail to reject H0)')
+    else:
+        print('Different proportions of errors, error rates are different (reject H0)')
+    return result.statistic,result.pvalue
+
+def grad_cam_rec(model,layer_name,cc,label,output_class='true',normalize=True,verbose=0):
+    '''
+    Generate class activation maps for whole recording
+    
+    Inputs:
+    model: model object
+    layer_name: layer to take grads of
+    cc: segmented cardiac cycles
+    label: corresponding class for each cc to generate activations w.r.t
+    
+    Outputs:
+    rec: concatenated cc
+    acti: concatenated CAMs
+    '''
+    
+    rec = []
+    activations = []
+    for idx,data in enumerate(cc):
+        if verbose:
+            print("Grad-CAM on CC-%d" % idx)
+        data = np.expand_dims(data,axis=0)
+        
+        if output_class == 'true':
+            output = model.output[:,-(int(label[idx])+1)]
+        elif output_class == 'pred':
+            pred = np.argmax(model.predict(data,verbose=0),axis=-1)
+            output = model.output[:,-(int(pred)+1)]
+        else:
+            raise ValueError('output_class should be `true` or `pred`')
+        
+        last_conv_layer = model.get_layer(layer_name) ##### have to change the name here
+        grads = K.gradients(output, last_conv_layer.output)[0]
+        pooled_grads = K.mean(grads, axis=(0, 1)) ### no idea what to do here
+        iterate = K.function([model.input], [pooled_grads, last_conv_layer.output[0]])
+
+        pooled_grads_value, conv_layer_output_value = iterate([data])
+        for i in range(pooled_grads_value.shape[0]):
+            if verbose:
+                print("Iteration %d" % i)
+            conv_layer_output_value[ :, i] *= pooled_grads_value[i]
+        heatmap = np.mean(conv_layer_output_value, axis=-1)
+        heatmap = np.maximum(heatmap, 0)
+        if normalize:
+            print('normalizing')
+            try:
+                heatmap /= (np.std(heatmap)+ 1E-10)
+            except RuntimeWarning:
+                heatmap = heatmap
+        
+        
+        x = np.linspace(0, data.shape[1], num=len(heatmap))
+        y = heatmap
+        f1 = interp1d(x, y, kind='cubic')
+        xnew = np.linspace(0, data.shape[1], num=data.shape[1])
+        ynew = f1(xnew)
+        
+        end_idx = np.where(data!=0)[1][-1]
+        data = data[0,:end_idx,0]
+        ynew = ynew[:end_idx]
+        rec.append(data)
+        activations.append(ynew)
+    
+    return np.asarray(np.hstack(rec)),np.asarray(np.hstack(activations))
+
+def grad_cam_logs(logs,layer_name,cc,label,min_epoch=80,min_metric=.7,output_class='true',normalize=True,
+                  xlim=None,figsize=(12,8),lognames=None,colors=None,window='flat',win_size=50,
+                metric='val_macc',model_dir='../models/',verbose=0):
+    '''
+    Plot Grad_CAM for logs with predictions
+    '''
+    parser={0:'Normal',1:'Abnormal'}
+    
+    if not type(logs) == list:
+        logs = [logs]
+    
+    activations = []
+    predictions = []
+    for log_name in logs:
+        model = load_model(log_name,verbose=verbose)
+        weights = get_weights(log_name,min_epoch=min_epoch,
+                              min_metric=min_metric,verbose=verbose)
+        checkpoint_name = os.path.join(model_dir+log_name,weights[metric])
+        model.load_weights(checkpoint_name)
+        if verbose:
+            print("GRAD CAM for %s" % log_name)
+        _,acti = grad_cam_rec(model,layer_name,cc,label,
+                              verbose=verbose,
+                              normalize=normalize,
+                              output_class=output_class)
+        pred = cc2rec_labels(cc,model.predict(cc)[:,1])
+        activations.append(acti)
+        predictions.append(pred)
+    
+    rec = cc2rec(cc)
+    
+    fig = plt.figure(figsize=figsize)
+    grid = plt.GridSpec(3, 4, hspace=0.2, wspace=0.2,)
+    main_ax = fig.add_subplot(grid[0,:],
+                              ylabel='PCG',
+#                               ylabel='%s PCG'%parser[label[0]]
+                             )
+    pred_ax = fig.add_subplot(grid[1, :], ylabel='Predictions', sharex=main_ax)
+    acti_ax = fig.add_subplot(grid[2, :], ylabel='Activations', sharex=main_ax)
+    
+
+    t = np.linspace(0,len(rec)/1000,num=len(rec))
+    main_ax.plot(t,rec)
+    main_ax.set_xlim([0,t[-1]])
+    
+    if colors is not None:
+        for acti,pred,color in zip(activations,predictions,colors):
+            acti_ax.plot(t,smooth_win(acti/np.std(acti),window_len=win_size,window=window),color=color)
+            pred_ax.plot(t,pred,color=color)
+            
+    else:
+        for acti,pred in zip(activations,predictions):
+            acti_ax.plot(t,smooth_win(acti/np.std(acti),window_len=win_size,window=window))
+            pred_ax.plot(t,pred)
+    
+    pred_ax.set_ylim([0,1])
+    if xlim is not None:
+        main_ax.set_xlim(xlim)
+    if lognames is not None:
+        acti_ax.legend(lognames)
+        
+    return [main_ax,pred_ax,acti_ax]
+
+def cc2parts(cc,parts):
+    
+    if not len(cc) == sum(parts):
+        raise ValueError('Number of CC elements are not equal to total number of parts')
+    
+    labels = []
+    start_idx = 0
+#     cc = np.round(cc)
+    
+    for s in parts:
+        if not s:  ## for e00032 in validation0 there was no cardiac cycle
+            continue
+        temp = cc[start_idx:start_idx + int(s)]
+        try:
+            labels.append(np.mean(temp,axis=0))
+        except TypeError: ## TypeError for string input in train_files
+            labels.append(cc[start_idx])
+        start_idx = start_idx + int(s)
+    return np.asarray(labels)
+
+def plot_confidence_logs(logs,lognames,bins=5,figsize=(10,2),verbose=0):
+    fig,ax = plt.subplots(1,len(logs),sharey='row',figsize=figsize)
+    for axes,log_name,model_name in zip(ax,logs,lognames):
+        model = load_model(log_name,verbose=0)
+        weights = get_weights(log_name,min_epoch=100,min_metric=.7)
+        metric = 'val_macc'
+        model_dir = '../models/'
+        checkpoint_name = os.path.join(model_dir+log_name,weights[metric])
+        model.load_weights(checkpoint_name)
+
+        # for subset in np.unique(val_files):
+        #     mask = np.asarray(val_files) == subset
+        #     part_mask = cc2parts(val_files,val_parts) == subset
+        #     conf = model_confidence(model=model,data=x_val[mask],labels=y_val[mask], verbose=verbose)
+        #     conf = cc2parts(conf,val_parts[part_mask])
+        #     sns.distplot(conf,bins=bins,label="Subset-%s"%subset,ax=axes)
+
+        # conf = model_confidence(model=model,data=x_test,labels=y_test, verbose=verbose)
+        # conf = cc2parts(conf,test_parts)
+        # sns.distplot(conf,bins=bins,label='HSSDB',ax=axes)
+        axes.set_title('%s C-DIST'%model_name)
+#         axes.legend(loc='upper center', bbox_to_anchor=(0.5, 1.00),&nbsp; shadow=True, ncol=2)
+    return ax
+
+def idx_parts2cc(partidx,parts):
+    
+    if type(partidx) == int:
+        partidx = [partidx]
+        
+    idx = []
+    for each in partidx:
+        start_idx = int(sum(parts[:each]))
+        end_idx = int(start_idx + parts[each])
+        idx = idx+range(start_idx,end_idx)
+    return idx
+
+def parts2cc(partitioned,parts):
+    
+    labels = []
+    parts = parts[np.nonzero(parts)]
+    for each,part in zip(partitioned,parts):
+            labels += list(np.repeat(each,part))
+    return np.asarray(labels)
