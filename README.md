@@ -32,11 +32,11 @@ Run *extract_segments_noFIR.m* it first then run *data_fold_noFIR.m* to create d
 #### Training:
 For Training run the *trainer.py* and provide a dataset name (or fold name) i.e. *fold0_noFIR*. The command should be like this : 
 ~~~~{.python}
-python trainer.py fold0_noFIR
+python train.py fold0_noFIR
 ~~~~
 Other parameters like epochs, verbose, batch_size, pre-trained model path can be passed as arguments. 
  ~~~~{.python}
-python trainer.py fold0_noFIR --epochs 300 --batch_size 1000 
+python train.py fold0_noFIR --epochs 300 --batch_size 1000 
 ~~~~
 
 
