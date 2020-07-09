@@ -32,3 +32,4 @@ models/*
 logs/*
 **/*.pyc
 *.json
+*.zip
