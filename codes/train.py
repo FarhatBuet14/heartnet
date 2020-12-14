@@ -75,7 +75,7 @@ if __name__ == '__main__':
         print("Training with %d samples per minibatch" % (args.batch_size))
         batch_size = args.batch_size
     else:
-        batch_size = 1000
+        batch_size = 64
         print("Training with %d minibatches" % (batch_size))
 
     if args.verbose is not None:
@@ -126,7 +126,7 @@ if __name__ == '__main__':
         'padding': 'valid',
         'activation_function': 'relu',
         'subsam': 2,
-        'FIR_train': True,
+        'FIR_train': False,
         'trainable': True,
         'softFusion': False,
         'lr':lr,
@@ -183,7 +183,7 @@ if __name__ == '__main__':
         meta_labels[np.where(np.logical_and(y_train[:, 0] == 1, np.asarray(train_subset) == each))] = 6 + idx
 
     flow = datagen.flow(x_train, y_train,
-                        meta_label=meta_labels,
+                        meta_label=None,
                         batch_size=batch_size, shuffle=True,
                         seed=random_seed)
     try:

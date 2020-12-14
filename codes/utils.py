@@ -46,7 +46,7 @@ def sessionLog(results_path,log_dir,log_name,activation_function,kernel_size,max
     max_idx = dfNew['val_macc'].idxmax()
 
     epoch = dfNew.loc[[max_idx]]['epoch'].values[0]
-    trainAcc = dfNew.loc[max_idx]['acc'] * 100
+    trainAcc = dfNew.loc[max_idx]['accuracy'] * 100
     valAcc = dfNew.loc[max_idx]['val_acc'] * 100
     sens = dfNew.loc[max_idx]['val_sensitivity'] * 100
     spec = dfNew.loc[max_idx]['val_specificity'] * 100
